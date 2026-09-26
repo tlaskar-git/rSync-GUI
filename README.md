@@ -344,7 +344,8 @@ Source files in `src\`:
 
 ## Licences and credits
 
-- This repository holds the GUI source and build scripts. No licence file has been added yet.
+- The GUI source and build scripts in this repository are free to use, copy, change and share under the **MIT licence**. See `LICENSE`.
+  The programs bundled in the release zip keep their own licences, listed below.
 - **rsync** is licensed under the GNU General Public Licence version 3. Source: https://github.com/RsyncProject/rsync (the release zip records the exact tag and commit in `licenses\SOURCES.txt`).
 - **rclone** is licensed under the MIT licence. Source: https://github.com/rclone/rclone
 - **Cygwin** and **OpenSSH** have their own licences. See https://cygwin.com/ and https://www.openssh.com/.

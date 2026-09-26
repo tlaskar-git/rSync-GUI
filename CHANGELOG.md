@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- The GUI source is now under the MIT licence (see LICENSE). The release zip will include it as licenses\RsyncGui-LICENSE.txt.
+
 ## 1.2.1 (2026-09-25)
 - Each job log is capped at 20 MB. The start line, end line and result are always recorded.
 - The runner's own log resets at 1 MB.

@@ -25,4 +25,5 @@ if (-not $NoManifest) { $a += "/win32manifest:$src\app.manifest" }
 & $csc @a (Get-ChildItem "$src\*.cs" | ForEach-Object { $_.FullName })
 if ($LASTEXITCODE -ne 0) { throw 'Compile failed' }
 Copy-Item (Join-Path $PSScriptRoot '..\README.md') $Out -Force
+if (Test-Path (Join-Path $PSScriptRoot '..\LICENSE')) { Copy-Item (Join-Path $PSScriptRoot '..\LICENSE') (Join-Path $Out 'licenses\RsyncGui-LICENSE.txt') -Force }
 Write-Host "Built $Out\RsyncGui.exe"
