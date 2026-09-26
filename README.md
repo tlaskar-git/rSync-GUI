@@ -16,6 +16,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 - [Job types in detail](#job-types-in-detail)
 - [Schedules](#schedules)
 - [Auto-start after a reboot](#auto-start-after-a-reboot)
+- [The window and the system tray](#the-window-and-the-system-tray)
 - [Live progress](#live-progress)
 - [Failure alerts](#failure-alerts)
 - [Run history](#run-history)
@@ -40,6 +41,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 | **Copy, sync, move and two-way** | Four cloud modes, each explained in plain words on the screen. |
 | **A real scheduler** | At Windows start, every N minutes or hours, every day at a time, or on chosen days. Missed runs are made up. Failed runs retry a set number of times. |
 | **Survives reboots** | A Windows scheduled task starts a hidden runner before anyone signs in. Interrupted jobs continue where the files stand. |
+| **Lives in the system tray** | The X button hides the window next to the clock. It closes only from the tray icon. Starting the program again brings the window back. |
 | **Live progress** | A bar, percentage, speed, time left, file count and the files being worked on right now, for every running job. |
 | **Failure alerts** | Email, Slack, Microsoft Teams, Discord or your own web hook, plus the Windows Event Log, when a scheduled job fails, works again, or has not succeeded for too long. |
 | **Run history** | A History tab on every job lists its last 100 runs: when, how long, how much data, how many files, the result and how it started. Save it as CSV. |
@@ -49,7 +51,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 
 ## Download and install
 
-**Latest version: 1.4.0.** See the [changelog](CHANGELOG.md) for what changed.
+**Latest version: 1.5.0.** See the [changelog](CHANGELOG.md) for what changed.
 
 > **[Download the latest RsyncGui.zip](https://github.com/tlaskar-git/rSync-GUI/releases/latest/download/RsyncGui.zip)** (about 34 MB). The same file is on the [Releases page](https://github.com/tlaskar-git/rSync-GUI/releases/latest), named `RsyncGui-x.y.z.zip`, together with its SHA-256 checksum.
 
@@ -138,6 +140,7 @@ If that works, rsync, the log, the progress panel and the history all work on yo
 5. Click **Run now**. The panel at the bottom shows progress.
 6. Choose **When to run** on the Job tab, then click **Save**.
 7. For schedules that run by themselves, click **Auto-start at boot** on the toolbar once.
+8. Close the window with the X. It hides in the system tray and keeps running. See [The window and the system tray](#the-window-and-the-system-tray).
 
 ## Recipes
 
@@ -282,6 +285,27 @@ Click **Auto-start at boot: OFF** on the toolbar. The program creates a Windows 
 
 Click the button again to remove the task.
 
+## The window and the system tray
+
+The X button does not close the program. It **hides the window in the system tray**, the icon area next to the clock. The program keeps running there. This is on purpose: a job you started from the window keeps running, and you can open the window again in one click.
+
+| You do this | This happens |
+|---|---|
+| Click the **X**, or press Alt+F4 | The window hides. The first time, a balloon tells you where it went. |
+| Click the tray icon | The window opens. |
+| Right-click the tray icon, then **Open Rsync GUI** | The window opens. |
+| Right-click the tray icon, then **Exit** | The program closes for good. |
+| Start `RsyncGui.exe` again while it is hidden | The hidden window opens. A second copy does not start. |
+| Run `RsyncGui.exe --quit` | Same as **Exit**. Useful in scripts. |
+
+- Hover over the tray icon to see how many jobs are running.
+- Windows can put a new tray icon in the hidden icons area (the small arrow next to the clock). Drag the icon out of it if you want it always visible.
+- **Exit** asks first when a job that you started from this window is still running, because exiting stops that job. It asks to save when you have unsaved changes.
+- Exit does not stop the background runner. The runner is a separate program. Scheduled jobs go on running after you exit the window. To stop scheduled jobs, switch **Auto-start at boot** off.
+- The window and the runner are separate on purpose. The window in the tray is only the control panel.
+- The minimise button still minimises to the taskbar in the usual way.
+- When Windows shuts down or you sign out, the program ends without asking questions.
+
 ## Live progress
 
 The panel at the bottom follows the selected job.
@@ -394,6 +418,7 @@ Everything is in one folder: **`C:\ProgramData\RsyncGui`**. The toolbar button *
 | `--runner` | The hidden background runner. The boot task uses this. |
 | `--enable-autostart [USER PASSWORD]` | Creates the boot task. Without a user it runs as SYSTEM. |
 | `--disable-autostart` | Removes the boot task. |
+| `--quit` | Asks the open window (also one hidden in the tray) to exit, like **Exit** in the tray menu. Returns 1 when no window is open. |
 | `--shot FOLDER` | Saves a picture of every tab (used to make the screenshots). |
 
 The environment variable `RSYNCGUI_DATA` moves the data folder, which is handy for trying things out.
@@ -421,7 +446,7 @@ The job list also records which version saved it. A program refuses a job list s
 
 Versions before 1.2.2 do not have these checks, so the first upgrade from them uses the manual steps below.
 
-1. Close the RsyncGui window.
+1. Exit the RsyncGui window: right-click its tray icon and choose **Exit** (the X only hides it), or run `RsyncGui.exe --quit`.
 2. Stop the runner. Open the old window and switch **Auto-start at boot** off, or run `RsyncGui.exe --disable-autostart` from the old folder.
 3. Replace the program folder with the new one. Your jobs and accounts are in the data folder, so they stay.
 4. Open the new `RsyncGui.exe` and switch **Auto-start at boot** on again.
@@ -431,7 +456,7 @@ Jobs made by older versions are converted when the new version opens them. For e
 ## Uninstall
 
 1. Open the window and click **Auto-start at boot** to switch it off. This removes the `RsyncGui Runner` task. Or run `RsyncGui.exe --disable-autostart` in an administrator PowerShell.
-2. Close the window.
+2. Exit the window from its tray icon (the X only hides it), or run `RsyncGui.exe --quit`.
 3. Delete the program folder (for example `C:\Program Files\RsyncGui`).
 4. To remove your data as well, delete `C:\ProgramData\RsyncGui`. That deletes your jobs, cloud sign-in tokens, logs and history. Keep a copy of `jobs.json` first if you want to set the jobs up again later.
 

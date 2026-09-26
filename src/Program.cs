@@ -4,8 +4,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Rsync GUI")]
 [assembly: AssemblyDescription("Windows front end for rsync with auto-start")]
-[assembly: AssemblyVersion("1.4.0.0")]
-[assembly: AssemblyFileVersion("1.4.0.0")]
+[assembly: AssemblyVersion("1.5.0.0")]
+[assembly: AssemblyFileVersion("1.5.0.0")]
 
 namespace RsyncGui
 {
@@ -20,6 +20,7 @@ namespace RsyncGui
                 // --run NAME|ID [--dry]   run one job now and exit with rsync's exit code
                 // --enable-autostart [USER PASSWORD]   create the boot task (SYSTEM when no user is given)
                 // --disable-autostart                  remove the boot task
+                // --quit              ask the open window to exit (same as Exit in the tray menu)
                 // --shot DIR          test hook, saves a PNG of every tab
                 if (args[0] == "--runner") return BackgroundRunner.Run();
                 if (args[0] == "--enable-autostart" || args[0] == "--disable-autostart")
@@ -32,6 +33,12 @@ namespace RsyncGui
                     return 0;
                 }
                 if (args[0] == "--run" && args.Length > 1) return CliRun(args);
+                if (args[0] == "--quit")
+                {
+                    // asks the open window (also one hidden in the tray) to exit, like Exit in the tray menu
+                    try { System.Threading.EventWaitHandle.OpenExisting("Local\\" + InstanceKey() + ".quit").Set(); return 0; }
+                    catch { return 1; }
+                }
                 if (args[0] == "--shot" && args.Length > 1)
                 {
                     Application.EnableVisualStyles();
@@ -57,8 +64,38 @@ namespace RsyncGui
                 return 1;
             }
             catch { }
-            Application.Run(new MainForm());
+            // One window per data folder. A second start shows the first one (it may be hidden in the tray).
+            string key = InstanceKey();
+            bool first;
+            System.Threading.Mutex single = new System.Threading.Mutex(true, "Local\\" + key, out first);
+            if (!first)
+            {
+                try
+                {
+                    System.Threading.EventWaitHandle.OpenExisting("Local\\" + key + ".show").Set();
+                }
+                catch
+                {
+                    MessageBox.Show("Rsync GUI is already running. Look for its icon in the system tray, next to the clock.", "Rsync GUI",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                return 0;
+            }
+            System.Threading.EventWaitHandle show = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset, "Local\\" + key + ".show");
+            MainForm main = new MainForm();
+            main.EnableTray();
+            System.Threading.EventWaitHandle quit = new System.Threading.EventWaitHandle(false, System.Threading.EventResetMode.AutoReset, "Local\\" + key + ".quit");
+            main.WatchForShow(show, quit);
+            Application.Run(main);
+            GC.KeepAlive(single);
             return 0;
+        }
+
+        // One window per data folder: this name identifies it.
+        static string InstanceKey()
+        {
+            byte[] md5 = System.Security.Cryptography.MD5.Create().ComputeHash(System.Text.Encoding.UTF8.GetBytes(Paths.DataDir.ToLowerInvariant()));
+            return "RsyncGui." + BitConverter.ToString(md5).Replace("-", "").Substring(0, 16);
         }
 
         static int CliRun(string[] args)

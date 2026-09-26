@@ -44,6 +44,9 @@ namespace RsyncGui
         Dictionary<string, Control> optCtl = new Dictionary<string, Control>();
         TextBox tInc, tExc, tFil;
         TextBox tDaemon, tCmd, tLog;
+        NotifyIcon tray;
+        bool trayOn, reallyExit, trayTipShown;
+        HashSet<string> ownRuns = new HashSet<string>();
         TabPage pgCmd, pgLog, pgJob, pgPatterns, pgCloud, pgDaemon, pgHistory;
         ListView lvHist;
         Label lHistSum;
@@ -864,6 +867,7 @@ namespace RsyncGui
             if (!SaveAll()) return;
             Job j = cur.Clone();
             JobRun run = new JobRun(j, dry);
+            ownRuns.Add(j.Id);
             Thread t = new Thread(delegate() { run.RunBlocking(null); });
             t.IsBackground = true;
             t.Start();
@@ -1189,6 +1193,8 @@ namespace RsyncGui
         void OnTick(object s, EventArgs e)
         {
             ticks++;
+            UpdateTrayText();
+            if (!Visible) return;
             UpdateStatuses();
             UpdateRunPanel();
             if (tabs.SelectedTab == pgHistory) RefreshHistory(false);
@@ -1257,17 +1263,141 @@ namespace RsyncGui
 
         void OnClosing(object s, FormClosingEventArgs e)
         {
+            // The X button (and Alt+F4) hides the window in the system tray. Only the tray menu quits.
+            if (trayOn && !reallyExit && (e.CloseReason == CloseReason.UserClosing || e.CloseReason == CloseReason.TaskManagerClosing))
+            {
+                e.Cancel = true;
+                HideToTray();
+                return;
+            }
+            // Windows is shutting down or the program was told to end: do not ask questions.
+            if (e.CloseReason != CloseReason.UserClosing && e.CloseReason != CloseReason.TaskManagerClosing && !reallyExit) return;
             try
             {
                 CommitCurrent();
                 if (store.Signature() != savedSnapshot)
                 {
                     DialogResult r = MessageBox.Show(this, "Save your changes before closing?", "Rsync GUI", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
-                    if (r == DialogResult.Cancel) { e.Cancel = true; return; }
-                    if (r == DialogResult.Yes && !SaveAll()) { e.Cancel = true; return; }
+                    if (r == DialogResult.Cancel) { e.Cancel = true; reallyExit = false; return; }
+                    if (r == DialogResult.Yes && !SaveAll()) { e.Cancel = true; reallyExit = false; return; }
                 }
             }
             catch { }
+        }
+
+        // ---------------------------------------------------------------- system tray
+
+        // Called by the real program (not by the screenshot test hook).
+        public void EnableTray()
+        {
+            trayOn = true;
+            tray = new NotifyIcon();
+            Icon ic = null;
+            try { ic = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            tray.Icon = ic ?? SystemIcons.Application;
+            Icon = tray.Icon;
+            tray.Text = "Rsync GUI";
+            ContextMenuStrip m = new ContextMenuStrip();
+            ToolStripItem open = m.Items.Add("Open Rsync GUI");
+            open.Font = new Font(open.Font, FontStyle.Bold);
+            open.Click += delegate { ShowFromTray(); };
+            m.Items.Add(new ToolStripSeparator());
+            ToolStripItem exit = m.Items.Add("Exit");
+            exit.Click += delegate { ExitFromTray(); };
+            tray.ContextMenuStrip = m;
+            tray.MouseClick += delegate(object s, MouseEventArgs e) { if (e.Button == MouseButtons.Left) ShowFromTray(); };
+            tray.Visible = true;
+            FormClosed += delegate { try { tray.Visible = false; tray.Dispose(); } catch { } };
+        }
+
+        void HideToTray()
+        {
+            Hide();
+            ShowInTaskbar = false;
+            if (!trayTipShown && tray != null)
+            {
+                trayTipShown = true;
+                try
+                {
+                    tray.ShowBalloonTip(4000, "Rsync GUI is still running",
+                        "The window is hidden. Click the icon to open it. Right-click the icon and choose Exit to close it.", ToolTipIcon.Info);
+                }
+                catch { }
+            }
+        }
+
+        public void ShowFromTray()
+        {
+            ShowInTaskbar = true;
+            if (!Visible) Show();
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            TopMost = true; TopMost = false;       // brings the window to the front
+            Activate();
+            OnTick(null, EventArgs.Empty);
+        }
+
+        void ExitFromTray()
+        {
+            try
+            {
+                List<string> live = new List<string>();
+                foreach (string id in ownRuns) if (JobRun.IsRunning(id)) live.Add(id);
+                if (live.Count > 0)
+                {
+                    ShowFromTray();
+                    if (MessageBox.Show(this, live.Count + (live.Count == 1 ? " job that you started from this window is" : " jobs that you started from this window are") +
+                        " still running. Exiting stops " + (live.Count == 1 ? "it" : "them") + ".\r\n\r\n" +
+                        "Jobs run by the background runner are not affected.\r\n\r\nExit anyway?", "Rsync GUI",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                    foreach (string id in live) JobRun.RequestStop(id);
+                    DateTime end = DateTime.Now.AddSeconds(8);
+                    while (DateTime.Now < end)
+                    {
+                        bool any = false;
+                        foreach (string id in live) if (JobRun.IsRunning(id)) any = true;
+                        if (!any) break;
+                        Application.DoEvents();
+                        Thread.Sleep(100);
+                    }
+                }
+            }
+            catch { }
+            reallyExit = true;
+            if (store.Signature() != savedSnapshot) ShowFromTray();
+            Close();
+        }
+
+        void UpdateTrayText()
+        {
+            if (tray == null) return;
+            try
+            {
+                int n = 0;
+                foreach (Job j in store.Jobs) if (JobRun.IsRunning(j.Id)) n++;
+                string t = n == 0 ? "Rsync GUI" : "Rsync GUI - " + n + (n == 1 ? " job running" : " jobs running");
+                if (tray.Text != t) tray.Text = t;
+            }
+            catch { }
+        }
+
+        // Second copy of the program: show the window of the first one.
+        public void WatchForShow(System.Threading.EventWaitHandle ev, System.Threading.EventWaitHandle quit)
+        {
+            Thread th = new Thread(delegate()
+            {
+                while (true)
+                {
+                    try
+                    {
+                        int w = System.Threading.WaitHandle.WaitAny(new System.Threading.WaitHandle[] { ev, quit });
+                        BeginInvoke(w == 0 ? new MethodInvoker(ShowFromTray) : new MethodInvoker(ExitFromTray));
+                    }
+                    catch (InvalidOperationException) { Thread.Sleep(500); }
+                    catch { return; }
+                }
+            });
+            th.IsBackground = true;
+            th.Start();
         }
 
         // ---------------------------------------------------------------- test hook: render every tab to PNG

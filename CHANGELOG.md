@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 (2026-09-26)
+- System tray. The X button (and Alt+F4) now hides the window in the system tray instead of closing it. The program closes only from the tray icon: right-click it and choose **Exit**.
+- Click the tray icon to open the window. Hover over it to see how many jobs are running.
+- Only one window per data folder. Starting `RsyncGui.exe` again brings the hidden window back.
+- **Exit** asks first when a job started from the window is still running, and asks to save unsaved changes.
+- New switch `--quit` asks the open window to exit, for scripts and upgrades.
+- The window does no refresh work while it is hidden.
+
 ## 1.4.0 (2026-09-26)
 - Run history. A **History** tab on every job lists its last 100 runs with the start time, how long it took, the amount of data, the number of files, the result, the number of errors and how it started (scheduled, manual or command line).
 - A summary line above the list: OK and failed counts, the average time of an OK run and the last success.
