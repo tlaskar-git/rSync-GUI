@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
-- The GUI source is now under the MIT licence (see LICENSE). The release zip will include it as licenses\RsyncGui-LICENSE.txt.
+## 1.2.2 (2026-09-26)
+- Version check. The background runner records its version. A red banner with an **Update runner...** button appears in the window when the runner is a different version.
+- The job list records the version that saved it. A program refuses a job list saved by a newer version.
+- A job with a type the program does not know is stopped with a clear message and is not retried. It used to be run as an rsync job.
+- The status bar shows the runner's version.
+- The GUI source is now under the MIT licence.
 
 ## 1.2.1 (2026-09-25)
 - Each job log is capped at 20 MB. The start line, end line and result are always recorded.

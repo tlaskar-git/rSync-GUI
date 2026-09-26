@@ -484,6 +484,11 @@ namespace RsyncGui
                 try { logBytes = new FileInfo(logPath).Length; } catch { logBytes = 0; }
 
                 Log("=== " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  start  " + job.Name + (dry ? "  (dry run)" : "") + " ===", onLine, true);
+                if (job.Kind != "sync" && job.Kind != "cloud" && job.Kind != "daemon")
+                {
+                    Log("Unknown job type \"" + job.Kind + "\". This program is version " + AppInfo.Version + ". Update it. Nothing was run.", onLine);
+                    return Finish(Config, onLine);
+                }
                 string exe = Cmd.Exe(job);
                 if (!File.Exists(exe))
                 {
@@ -818,8 +823,10 @@ namespace RsyncGui
             FileStream me = JobRun.TryLock("_runner");
             if (me == null) return 0;   // another runner is already active
 
-            Note("runner started");
+            Note("runner started (version " + AppInfo.Version + ")");
+            RunnerInfo.WriteSelf();
             Dictionary<string, Worker> workers = new Dictionary<string, Worker>();
+            string lastErr = "";
             while (true)
             {
                 try
@@ -848,8 +855,13 @@ namespace RsyncGui
                         w.Start();
                         Note("started " + kv.Value.Name);
                     }
+                    lastErr = "";
                 }
-                catch (Exception ex) { Note("config error: " + ex.Message); }
+                catch (Exception ex)
+                {
+                    string msg = ex is NewerFormatException ? ex.Message : "config error: " + ex.Message;
+                    if (msg != lastErr) { lastErr = msg; Note(msg); }    // say it once, not every 5 seconds
+                }
                 Thread.Sleep(5000);
             }
         }

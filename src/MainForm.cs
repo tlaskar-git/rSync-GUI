@@ -34,7 +34,9 @@ namespace RsyncGui
         CheckBox[] chDays = new CheckBox[7];
         Label lNext, lSchedWhen;
         LinkLabel lnkBoot;
-        Panel pnlRun;
+        Panel pnlRun, pnlWarn;
+        Label lWarn;
+        Button bWarn;
         ProgressBar pbRun;
         Label lRunState, lRunPct, lRunDetail, lRunFile, lRunNext;
         Button bAddDir, bAddFile, bDestBrowse, bKeyBrowse;
@@ -177,6 +179,7 @@ namespace RsyncGui
             Panel pnlRight = new Panel(); pnlRight.Dock = DockStyle.Fill;
             pnlRight.Controls.Add(tabs);
             pnlRight.Controls.Add(BuildRunPanel());
+            pnlRight.Controls.Add(BuildWarnPanel());
             Controls.Add(pnlRight);
             Controls.Add(sp);
             Controls.Add(lv);
@@ -914,6 +917,47 @@ namespace RsyncGui
             lnkBoot.Visible = m != 0 && !taskExists;
         }
 
+        Panel BuildWarnPanel()
+        {
+            pnlWarn = new Panel(); pnlWarn.Dock = DockStyle.Top; pnlWarn.Height = 50; pnlWarn.Visible = false;
+            pnlWarn.BackColor = Color.FromArgb(255, 232, 232);
+            lWarn = new Label(); lWarn.Location = new Point(10, 6); lWarn.Size = new Size(760, 40); lWarn.ForeColor = Color.Firebrick;
+            lWarn.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
+            bWarn = Btn("Update runner...", 780, 12, 130);
+            bWarn.Click += UpdateRunner;
+            pnlWarn.Controls.Add(lWarn); pnlWarn.Controls.Add(bWarn);
+            pnlWarn.Resize += delegate
+            {
+                bWarn.Left = pnlWarn.ClientSize.Width - 145;
+                lWarn.Width = Math.Max(200, bWarn.Left - 20);
+            };
+            return pnlWarn;
+        }
+
+        // Restarts the background runner from this program, so the runner and the window are the same version.
+        void UpdateRunner(object s, EventArgs e)
+        {
+            try
+            {
+                string user, pass;
+                if (!AskRunAs(out user, out pass)) return;
+                SaveAll();
+                Cursor = Cursors.WaitCursor;
+                BootTask.Remove();
+                Thread.Sleep(3000);
+                string err = BootTask.Install(user, pass);
+                Thread.Sleep(2500);
+                Cursor = Cursors.Default;
+                taskExists = BootTask.Exists(); runnerActive = JobRun.IsRunning("_runner");
+                RefreshAutoStatus();
+                if (err != null) MessageBox.Show(this, err, "Rsync GUI", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                else if (RunnerInfo.Mismatch(runnerActive) != null)
+                    MessageBox.Show(this, "The old runner is still running, so the new one could not start. Restart Windows or stop RsyncGui.exe --runner in Task Manager, then try again.", "Rsync GUI");
+                else MessageBox.Show(this, "The background runner now starts from this program (version " + AppInfo.Version + ").", "Rsync GUI");
+            }
+            catch (Exception ex) { Cursor = Cursors.Default; MessageBox.Show(this, ex.Message, "Rsync GUI", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        }
+
         Panel BuildRunPanel()
         {
             pnlRun = new Panel(); pnlRun.Dock = DockStyle.Bottom; pnlRun.Height = 122; pnlRun.BorderStyle = BorderStyle.FixedSingle;
@@ -1048,7 +1092,12 @@ namespace RsyncGui
         {
             bAuto.Text = "Auto-start at boot: " + (taskExists ? "ON" : "OFF");
             bAuto.ForeColor = taskExists ? Color.DarkGreen : Color.Firebrick;
-            sAuto.Text = (taskExists ? "Boot task installed" : "Boot task not installed") + "   |   Background runner: " + (runnerActive ? "running" : "not running");
+            string rv, rexe;
+            string rvText = runnerActive && RunnerInfo.Read(out rv, out rexe) ? " (version " + rv + ")" : "";
+            sAuto.Text = (taskExists ? "Boot task installed" : "Boot task not installed") + "   |   Background runner: " + (runnerActive ? "running" + rvText : "not running");
+            string mm = RunnerInfo.Mismatch(runnerActive);
+            pnlWarn.Visible = mm != null;
+            if (mm != null) lWarn.Text = mm + " It can run jobs the wrong way. Click Update runner to start it from this program.";
             if (cur != null && cSched != null) UpdateSchedUi();
         }
 

@@ -236,7 +236,7 @@ Everything is in one folder: **`C:\ProgramData\RsyncGui`**. The toolbar button *
 | `jobs.json` | Your jobs. |
 | `rclone.conf` | Cloud accounts and their sign-in tokens. |
 | `logs\` | One log per job, plus `_runner.log`. |
-| `state\` | Small files: last result, next run, live progress. |
+| `state\` | Small files: last result, next run, live progress, and `_runner.version` (which version the runner is). |
 | `locks\` | Lock files that stop a job running twice, and Stop requests. |
 | `known_hosts` | SSH host keys. |
 | `home\` | Home folder for the bundled ssh. |
@@ -277,6 +277,12 @@ The environment variable `RSYNCGUI_DATA` moves the data folder, which is handy f
 
 The window and the background runner are the same program, so they must be the same version. An old runner does not understand newer job types and can run a job the wrong way.
 
+**Version checks (from 1.2.2).** The runner records its version when it starts. If it differs from the window you have open, a red banner appears at the top of the window with an **Update runner...** button, and the status bar shows the runner's version. The button restarts the runner from the program you have open (it asks which account to run as, like the Auto-start button).
+The job list also records which version saved it. A program refuses a job list saved by a newer version, instead of reading it and saving it back changed. A runner that meets a job type it does not know stops that job with a clear message in the log, and does not guess.
+![The red banner shown when the background runner is a different version](docs/screenshots/version-warning.png)
+
+Versions before 1.2.2 do not have these checks, so the first upgrade from them uses the manual steps below.
+
 1. Close the RsyncGui window.
 2. Stop the runner. Open the old window and switch **Auto-start at boot** off, or run `RsyncGui.exe --disable-autostart` from the old folder.
 3. Replace the program folder with the new one. Your jobs and accounts are in the data folder, so they stay.
@@ -293,6 +299,10 @@ Jobs made by older versions are converted when the new version opens them. For e
 **`Can't follow symlink without -L/--copy-links` notices.** rclone skips symbolic links. Tick `skip-links` on the Cloud options tab to hide the notice, or `copy-links` to copy what the links point to.
 
 **`corrupted on transfer: quickxor hashes differ`.** The file changed while it was uploading. Exclude it, or run again when it is quiet.
+
+**A red banner says `The background runner is version X but this window is version Y`.** The runner that starts at boot is a different program from the window you opened, often an older copy in another folder. Click **Update runner...** in the banner, or follow the [upgrade steps](#upgrading).
+
+**A log says `Unknown job type`.** The job was made by a newer version than the program that ran it. Update the program that runs the job (see the red banner above).
 
 **A job never starts by itself.** Check that the toolbar says **Auto-start at boot: ON**, that the job has a schedule other than "Only when I click Run now", and that the status bar says the runner is running. The panel at the bottom says why a job is not scheduled.
 

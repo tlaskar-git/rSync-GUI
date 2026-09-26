@@ -4,8 +4,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Rsync GUI")]
 [assembly: AssemblyDescription("Windows front end for rsync with auto-start")]
-[assembly: AssemblyVersion("1.2.1.0")]
-[assembly: AssemblyFileVersion("1.2.1.0")]
+[assembly: AssemblyVersion("1.2.2.0")]
+[assembly: AssemblyFileVersion("1.2.2.0")]
 
 namespace RsyncGui
 {
@@ -50,6 +50,13 @@ namespace RsyncGui
                     "Rsync GUI", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return 1;
             }
+            try { Store.Load(); }
+            catch (NewerFormatException ex)
+            {
+                MessageBox.Show(ex.Message, "Rsync GUI", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return 1;
+            }
+            catch { }
             Application.Run(new MainForm());
             return 0;
         }
@@ -58,7 +65,10 @@ namespace RsyncGui
         {
             Paths.EnsureDirs();
             bool dry = Array.IndexOf(args, "--dry") >= 0;
-            foreach (Job j in Store.Load().Jobs)
+            StoreData all;
+            try { all = Store.Load(); }
+            catch (NewerFormatException) { return 3; }
+            foreach (Job j in all.Jobs)
             {
                 if (j.Id == args[1] || string.Equals(j.Name, args[1], StringComparison.OrdinalIgnoreCase))
                 {

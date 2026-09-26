@@ -160,6 +160,8 @@ namespace RsyncGui
 
     public class StoreData
     {
+        public int Format;                       // 0 = written by a version before 1.2.2
+        public string WrittenBy = "";
         public List<Job> Jobs = new List<Job>();
 
         public string Signature()
@@ -172,6 +174,9 @@ namespace RsyncGui
 
     public static class Store
     {
+        // Raise this when a change to jobs.json would confuse an older program.
+        public const int CurrentFormat = 2;
+
         static JavaScriptSerializer Ser()
         {
             JavaScriptSerializer s = new JavaScriptSerializer();
@@ -190,6 +195,7 @@ namespace RsyncGui
                     txt = sr.ReadToEnd();
                 if (txt.Trim().Length > 0) d = Ser().Deserialize<StoreData>(txt);
             }
+            if (d.Format > CurrentFormat) throw new NewerFormatException(d.WrittenBy, d.Format);
             if (d.Jobs == null) d.Jobs = new List<Job>();
             foreach (Job j in d.Jobs)
             {
@@ -207,10 +213,68 @@ namespace RsyncGui
         public static void Save(StoreData d)
         {
             Paths.EnsureDirs();
+            d.Format = CurrentFormat;
+            d.WrittenBy = AppInfo.Version;
             string tmp = Paths.JobsFile + ".tmp";
             File.WriteAllText(tmp, Serialize(d), new UTF8Encoding(false));
             if (File.Exists(Paths.JobsFile)) File.Delete(Paths.JobsFile);
             File.Move(tmp, Paths.JobsFile);
+        }
+    }
+
+    public static class AppInfo
+    {
+        // 1.2.2 style version taken from the program itself
+        public static readonly string Version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString(3);
+    }
+
+    // jobs.json was saved by a newer version than this program understands.
+    public class NewerFormatException : Exception
+    {
+        public NewerFormatException(string writtenBy, int format)
+            : base("The job list was saved by a newer version of Rsync GUI (" + (string.IsNullOrEmpty(writtenBy) ? "format " + format : writtenBy) +
+                   "). This program is version " + AppInfo.Version + " and does not read it. Update this program.") { }
+    }
+
+    // The background runner records which program it is, so the window can spot a runner of another version.
+    public static class RunnerInfo
+    {
+        public static string VersionFile { get { return Path.Combine(Paths.StateDir, "_runner.version"); } }
+
+        public static void WriteSelf()
+        {
+            try
+            {
+                File.WriteAllText(VersionFile, AppInfo.Version + Environment.NewLine +
+                    System.Reflection.Assembly.GetExecutingAssembly().Location + Environment.NewLine + DateTime.Now.ToString("s"));
+            }
+            catch { }
+        }
+
+        public static bool Read(out string version, out string exe)
+        {
+            version = ""; exe = "";
+            try
+            {
+                if (!File.Exists(VersionFile)) return false;
+                string[] l = File.ReadAllLines(VersionFile);
+                if (l.Length > 0) version = l[0].Trim();
+                if (l.Length > 1) exe = l[1].Trim();
+                return version.Length > 0;
+            }
+            catch { return false; }
+        }
+
+        // Null when the running background runner has this program's version.
+        public static string Mismatch(bool runnerActive)
+        {
+            if (!runnerActive) return null;
+            string v, exe;
+            if (!Read(out v, out exe))
+                return "The background runner is an older version (before " + AppInfo.Version + ") and does not report its version.";
+            if (v != AppInfo.Version)
+                return "The background runner is version " + v + " but this window is version " + AppInfo.Version + ".";
+            return null;
         }
     }
 
