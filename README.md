@@ -24,6 +24,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 - [Command line switches](#command-line-switches)
 - [How it works inside](#how-it-works-inside)
 - [Upgrading](#upgrading)
+- [Uninstall](#uninstall)
 - [Troubleshooting](#troubleshooting)
 - [Limits](#limits)
 - [Build from source](#build-from-source)
@@ -48,19 +49,82 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 
 ## Download and install
 
-1. Open the [Releases page](https://github.com/tlaskar-git/rSync-GUI/releases) and download the latest `RsyncGui-x.y.z.zip`.
-2. Unzip it. A good place is `C:\Program Files\RsyncGui`. Any folder works, but keep it there, because the boot task points at it.
-3. Start `RsyncGui.exe`. Windows asks for administrator rights. Say yes.
+**Latest version: 1.4.0.** See the [changelog](CHANGELOG.md) for what changed.
 
-**Requirements**
+> **[Download the latest RsyncGui.zip](https://github.com/tlaskar-git/rSync-GUI/releases/latest/download/RsyncGui.zip)** (about 34 MB). The same file is on the [Releases page](https://github.com/tlaskar-git/rSync-GUI/releases/latest), named `RsyncGui-x.y.z.zip`, together with its SHA-256 checksum.
+
+There is no installer. You unzip a folder and run one program. This takes about two minutes.
+
+### Step by step
+
+1. **Download** `RsyncGui.zip` with the link above.
+2. **Check the download (optional but recommended).** The release page lists the SHA-256 checksum. In PowerShell:
+
+   ```powershell
+   Get-FileHash "$env:USERPROFILE\Downloads\RsyncGui.zip" -Algorithm SHA256
+   ```
+
+   The value must match the one on the release page.
+3. **Unblock the zip.** Windows marks files from the internet. Right-click the zip, choose **Properties**, tick **Unblock** and click **OK**. Or in PowerShell:
+
+   ```powershell
+   Unblock-File "$env:USERPROFILE\Downloads\RsyncGui.zip"
+   ```
+4. **Unzip it to its permanent place.** The recommended place is `C:\Program Files\RsyncGui`. Run this in an **administrator** PowerShell (right-click Start, then Terminal (Admin)):
+
+   ```powershell
+   Expand-Archive "$env:USERPROFILE\Downloads\RsyncGui.zip" -DestinationPath "C:\Program Files" -Force
+   ```
+
+   The zip holds one folder called `RsyncGui`, so this creates `C:\Program Files\RsyncGui\RsyncGui.exe`. You can use any folder, but do not move it later, because the boot task points at it.
+5. **Start it.** Double-click `RsyncGui.exe`. Windows asks for administrator rights. Say yes. The status bar at the bottom shows the rsync and rclone versions. That confirms the bundled tools work.
+6. **Make a desktop shortcut (optional).** Right-click `RsyncGui.exe`, choose **Show more options**, then **Send to** and **Desktop (create shortcut)**.
+7. **Make your first job.** Follow the [Quick start](#quick-start) below.
+8. **Turn on schedules.** Click **Auto-start at boot** on the toolbar once. Without it, jobs run only when you click **Run now**. See [Auto-start after a reboot](#auto-start-after-a-reboot).
+
+### What is in the folder
+
+```
+RsyncGui\
+  RsyncGui.exe     the window, the background runner and the command line, in one program
+  bin\             rsync, ssh, ssh-keygen, rclone and the Cygwin DLLs they need
+  etc\fstab        Cygwin mount settings
+  licenses\        the licences of this project, rsync and rclone, and where the source is
+  README.md        this guide
+```
+
+Your jobs, cloud accounts and logs are **not** in this folder. They are in `C:\ProgramData\RsyncGui`, so you can replace the program folder without losing them.
+
+### Requirements
 
 - Windows 10, Windows 11 or Windows Server 2016 or later, 64-bit. It was built and tested on Windows Server 2025. Windows 10 and 11 are not tested yet.
 - .NET Framework 4.x. Every supported Windows version already has it.
 - Administrator rights, because the program can create a scheduled task and protects its data folder.
 - About 100 MB of disk space for the program and its bundled tools.
-- The program is not code signed, so Windows SmartScreen or antivirus can warn on the first start.
+- An internet connection only if you use cloud services or a remote server.
+- The program is not code signed, so Windows SmartScreen or antivirus can warn on the first start. If SmartScreen shows a blue window, click **More info**, then **Run anyway**. You can check the download against the checksum and read the source in this repository first.
 
 The GUI itself makes no network connections. Network traffic comes only from rsync, ssh or rclone, and only to the places you set up.
+
+### Install on a server or many machines
+
+The steps above work on a server as they are. For a scripted install, run this in an administrator PowerShell after step 4. It starts the schedules at boot as SYSTEM without opening the window:
+
+```powershell
+& "C:\Program Files\RsyncGui\RsyncGui.exe" --enable-autostart
+```
+
+To get the same jobs on every machine, copy `jobs.json` into `C:\ProgramData\RsyncGui` before the first start. Copy `rclone.conf` too if you use cloud accounts. It holds sign-in tokens, so treat it like a password.
+
+### Check that it works
+
+1. Click **New job**. Set **Type** to **Files**, **Source** to an existing folder such as `C:\Users\Public\Documents` and **Destination** to a new empty folder such as `C:\Temp\RsyncTest`.
+2. Open the **Command** tab and read the command.
+3. Click **Dry run**. The **Log** tab lists what would be copied and nothing changes.
+4. Click **Run now**. The progress panel fills and the job list shows `OK`. The **History** tab records the run.
+5. Delete the test job when you are done.
+
+If that works, rsync, the log, the progress panel and the history all work on your machine.
 
 ## Quick start
 
@@ -363,6 +427,15 @@ Versions before 1.2.2 do not have these checks, so the first upgrade from them u
 4. Open the new `RsyncGui.exe` and switch **Auto-start at boot** on again.
 
 Jobs made by older versions are converted when the new version opens them. For example "repeat every 1,440 minutes" becomes "Every 24 hours". Do not save jobs with an older window after you have used a newer one. The old window can change the job type back.
+
+## Uninstall
+
+1. Open the window and click **Auto-start at boot** to switch it off. This removes the `RsyncGui Runner` task. Or run `RsyncGui.exe --disable-autostart` in an administrator PowerShell.
+2. Close the window.
+3. Delete the program folder (for example `C:\Program Files\RsyncGui`).
+4. To remove your data as well, delete `C:\ProgramData\RsyncGui`. That deletes your jobs, cloud sign-in tokens, logs and history. Keep a copy of `jobs.json` first if you want to set the jobs up again later.
+
+Nothing else is installed. The program adds no service and no start menu entry.
 
 ## Troubleshooting
 

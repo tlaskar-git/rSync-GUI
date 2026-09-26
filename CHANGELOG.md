@@ -6,6 +6,7 @@
 - Double-click a run for its details. **Save as CSV...** exports the list. **Clear history** empties it.
 - Every run is recorded, including runs that fail before they start because of a configuration mistake.
 - Deleting a job and saving now also deletes its log, history and state files.
+- README: a full install guide (download link that always points at the latest release, checksum check, unblock, unzip, first start, scripted install, a first-run test), an uninstall section and the zip layout. Each release now also carries a `RsyncGui.zip` with a fixed name.
 
 ## 1.3.0 (2026-09-26)
 - Failure alerts. Email, Slack, Microsoft Teams, Discord or a plain JSON web hook, plus the Windows Event Log, when a scheduled job fails after its retries, works again, or has not succeeded for too long.
