@@ -38,6 +38,7 @@ namespace RsyncGui
         public static string OkFile(string id) { return Path.Combine(StateDir, id + ".ok"); }
         public static string NextFile(string id) { return Path.Combine(StateDir, id + ".next"); }
         public static string ProgressFile(string id) { return Path.Combine(StateDir, id + ".progress"); }
+        public static string HistoryFile(string id) { return Path.Combine(StateDir, id + ".history"); }
         public static string DaemonConf(string id) { return Path.Combine(DataDir, "rsyncd-" + id + ".conf"); }
 
         // The data folder holds job definitions that the runner executes as SYSTEM, so only

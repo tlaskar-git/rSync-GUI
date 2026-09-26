@@ -18,6 +18,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 - [Auto-start after a reboot](#auto-start-after-a-reboot)
 - [Live progress](#live-progress)
 - [Failure alerts](#failure-alerts)
+- [Run history](#run-history)
 - [Logs](#logs)
 - [Where your data lives and who can read it](#where-your-data-lives-and-who-can-read-it)
 - [Command line switches](#command-line-switches)
@@ -40,6 +41,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 | **Survives reboots** | A Windows scheduled task starts a hidden runner before anyone signs in. Interrupted jobs continue where the files stand. |
 | **Live progress** | A bar, percentage, speed, time left, file count and the files being worked on right now, for every running job. |
 | **Failure alerts** | Email, Slack, Microsoft Teams, Discord or your own web hook, plus the Windows Event Log, when a scheduled job fails, works again, or has not succeeded for too long. |
+| **Run history** | A History tab on every job lists its last 100 runs: when, how long, how much data, how many files, the result and how it started. Save it as CSV. |
 | **Short logs** | Progress noise stays out of the log. Errors are counted and capped. No log grows past 20 MB. |
 | **The exact command** | The Command tab shows the full command line before you run it. Dry run tests without changing anything. |
 | **One folder, no installer** | Unzip and run. The zip holds the GUI, rsync, rclone and ssh. |
@@ -262,6 +264,31 @@ Alerts are sent by the background runner, so they need **Auto-start at boot** to
 - If a channel fails to send (for example the mail server is down), the runner writes the reason to `logs\_runner.log` and carries on. A failed alert never stops a job.
 - Changing an alert setting applies straight away. It never interrupts a running job.
 
+## Run history
+
+The **History** tab of a job lists the runs of that job, newest first. The job list only shows the last result. History shows the pattern, for example a backup that takes longer every week or fails every Monday.
+
+![The History tab](docs/screenshots/history-tab.png)
+
+| Column | Meaning |
+|---|---|
+| Started | When the run began. |
+| How | `scheduled` (the background runner), `manual` (you clicked Run now or Dry run in the window) or `command line` (`--run`). |
+| Took | How long the run lasted. |
+| Result | `OK`, or the reason it failed, in words. `Stopped` means you or the program stopped it. |
+| Data | Cloud jobs: the amount copied. Files jobs: the amount rsync transferred. |
+| Files | The number of files transferred. |
+| Errors | The number of error lines the run produced. |
+
+- The line above the list gives the totals: how many runs were OK, how many failed, the average time of an OK run and the last success.
+- Failed runs are red, stopped runs orange, runs with some errors dark yellow and dry runs grey.
+- **Double-click** a run for all its details: start and end time, exit code, type, program version and the number of skipped symbolic links.
+- **Save as CSV...** writes the list to a file that Excel opens. **Clear history** empties the list of the selected job and does not touch the log.
+- The last **100 runs** of each job are kept. Older runs drop off.
+- Every run is recorded: runs from the window, from the background runner and from the command line. A run that could not start because of a configuration mistake (for example a cloud account name used in a Files job) is recorded too, as a failure.
+- Data and Files for a dry run show what would be transferred. Cloud jobs count what rclone reports. For Files jobs the program uses the totals rsync prints, or the last progress line when the job has no `--stats` option.
+- When you delete a job and save, its log, history and state files are deleted with it.
+
 ## Logs
 
 - The **Log** tab shows the log of the selected job, live. **Open log file** opens it in Notepad.
@@ -281,7 +308,7 @@ Everything is in one folder: **`C:\ProgramData\RsyncGui`**. The toolbar button *
 | `alerts.json` | Where alerts go. The email password and the web hook URL are stored encrypted. |
 | `rclone.conf` | Cloud accounts and their sign-in tokens. |
 | `logs\` | One log per job, plus `_runner.log`. |
-| `state\` | Small files: last result, next run, live progress, `_runner.version` (which version the runner is) and `<job>.alert` (what has already been reported for a job). |
+| `state\` | Small files: last result, next run, live progress, `<job>.history` (the last 100 runs of a job, one line each), `_runner.version` (which version the runner is) and `<job>.alert` (what has already been reported for a job). |
 | `locks\` | Lock files that stop a job running twice, and Stop requests. |
 | `known_hosts` | SSH host keys. |
 | `home\` | Home folder for the bundled ssh. |
@@ -314,6 +341,7 @@ The environment variable `RSYNCGUI_DATA` moves the data folder, which is handy f
 - **Jobs.** A job is a record in `jobs.json`. The program turns it into one command line. It converts Windows paths to Cygwin paths for rsync and passes them as they are to rclone.
 - **Running.** The program starts the tool, reads its output line by line, writes the log, counts errors and updates the progress file. A lock file per job stops two runs at once. Stop writes a small file that the running job notices within a second.
 - **Cygwin settings.** The `etc\fstab` file mounts Windows drives without ACL emulation, so copied files keep normal Windows permissions. SSH key copies are made under the program's own `tmp\keys` folder, where Cygwin enforces private permissions.
+- **History.** When a run ends, the program appends one line of JSON to `state\<id>.history` and keeps the last 100 lines. The window reads that file when you open the tab and every second while the tab is visible.
 - **Alerts.** After a scheduled run has its final result, the worker asks `Alerts` whether to report it. A small file per job (`state\<job>.alert`) records what was already reported, so one failure streak gives one alert. Every few minutes the runner also checks for jobs that have not succeeded for too long. Messages go to each channel you enabled, and a channel that fails is logged and skipped.
 - **Runner.** One worker thread per scheduled job. Each worker works out the next due time from the schedule and from the time of the last success (`state\<id>.ok`), sleeps until then, runs the job and repeats. The worker writes `state\<id>.next` so the window can show the next run.
 - **Boot task.** A Windows scheduled task with a boot trigger and a 30 second delay. It ignores a second start, has no time limit and restarts on failure.

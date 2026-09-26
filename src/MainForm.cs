@@ -44,7 +44,11 @@ namespace RsyncGui
         Dictionary<string, Control> optCtl = new Dictionary<string, Control>();
         TextBox tInc, tExc, tFil;
         TextBox tDaemon, tCmd, tLog;
-        TabPage pgCmd, pgLog, pgJob, pgPatterns, pgCloud, pgDaemon;
+        TabPage pgCmd, pgLog, pgJob, pgPatterns, pgCloud, pgDaemon, pgHistory;
+        ListView lvHist;
+        Label lHistSum;
+        string histStamp = "";
+        List<string> pendingDeletes = new List<string>();
         List<TabPage> rsyncPages = new List<TabPage>();
         Dictionary<string, Control> cloudCtl = new Dictionary<string, Control>();
         ComboBox cMode;
@@ -171,12 +175,14 @@ namespace RsyncGui
             pgDaemon = BuildDaemonPage();
             pgCmd = BuildCmdPage();
             pgLog = BuildLogPage();
+            pgHistory = BuildHistoryPage();
             ApplyTabs("sync");
             tabs.SelectedIndexChanged += delegate
             {
                 if (applyingTabs) return;
                 if (tabs.SelectedTab == pgCmd) UpdateCmd();
                 if (tabs.SelectedTab == pgLog) TailLog(true);
+                if (tabs.SelectedTab == pgHistory) RefreshHistory(true);
             };
 
             Panel pnlRight = new Panel(); pnlRight.Dock = DockStyle.Fill;
@@ -447,6 +453,93 @@ namespace RsyncGui
             return p;
         }
 
+        TabPage BuildHistoryPage()
+        {
+            TabPage p = new TabPage("History");
+            lHistSum = new Label(); lHistSum.Dock = DockStyle.Top; lHistSum.Height = 40; lHistSum.Padding = new Padding(8, 10, 8, 0);
+            lvHist = new ListView(); lvHist.Dock = DockStyle.Fill; lvHist.View = View.Details; lvHist.FullRowSelect = true; lvHist.HideSelection = false;
+            lvHist.Columns.Add("Started", 130); lvHist.Columns.Add("How", 90); lvHist.Columns.Add("Took", 80); lvHist.Columns.Add("Result", 250);
+            lvHist.Columns.Add("Data", 90); lvHist.Columns.Add("Files", 70); lvHist.Columns.Add("Errors", 60);
+            lvHist.DoubleClick += ShowRunDetails;
+            Panel bottom = new Panel(); bottom.Dock = DockStyle.Bottom; bottom.Height = 40;
+            Button refresh = Btn("Refresh", 8, 8, 90); refresh.Click += delegate { RefreshHistory(true); };
+            Button csv = Btn("Save as CSV...", 106, 8, 120);
+            csv.Click += delegate
+            {
+                if (cur == null) return;
+                using (SaveFileDialog d = new SaveFileDialog())
+                {
+                    d.Filter = "CSV file (*.csv)|*.csv"; d.FileName = cur.Name.Replace(' ', '-') + "-history.csv";
+                    if (d.ShowDialog(this) == DialogResult.OK)
+                    {
+                        try { File.WriteAllText(d.FileName, History.ToCsv(History.Load(cur.Id)), new UTF8Encoding(true)); }
+                        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Rsync GUI", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+                    }
+                }
+            };
+            Button clear = Btn("Clear history", 234, 8, 110);
+            clear.Click += delegate
+            {
+                if (cur == null) return;
+                if (MessageBox.Show(this, "Clear the run history of \"" + cur.Name + "\"? The log file is not touched.", "Rsync GUI", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                History.Clear(cur.Id); RefreshHistory(true);
+            };
+            Label hint = new Label(); hint.Text = "Double-click a run for details. The last " + History.Keep + " runs are kept."; hint.AutoSize = true;
+            hint.ForeColor = SystemColors.GrayText; hint.Location = new Point(360, 14);
+            bottom.Controls.AddRange(new Control[] { refresh, csv, clear, hint });
+            p.Controls.Add(lvHist); p.Controls.Add(bottom); p.Controls.Add(lHistSum);
+            return p;
+        }
+
+        void RefreshHistory(bool force)
+        {
+            if (cur == null) { lvHist.Items.Clear(); lHistSum.Text = ""; return; }
+            string stamp = cur.Id;
+            try
+            {
+                FileInfo fi = new FileInfo(Paths.HistoryFile(cur.Id));
+                stamp += "|" + (fi.Exists ? fi.Length + "|" + fi.LastWriteTimeUtc.Ticks : "none");
+            }
+            catch { }
+            if (!force && stamp == histStamp) return;
+            histStamp = stamp;
+            List<RunRecord> runs = History.Load(cur.Id);
+            lvHist.BeginUpdate();
+            lvHist.Items.Clear();
+            foreach (RunRecord r in runs)
+            {
+                DateTime st = r.StartDate();
+                ListViewItem it = new ListViewItem(st == DateTime.MinValue ? r.Start : st.ToString("yyyy-MM-dd HH:mm:ss"));
+                it.SubItems.Add(r.Trigger);
+                it.SubItems.Add(History.Duration(r.Seconds));
+                it.SubItems.Add(r.Result + (r.Dry ? "  (dry run)" : ""));
+                it.SubItems.Add(r.Data);
+                it.SubItems.Add(r.Files);
+                it.SubItems.Add(r.Errors > 0 ? r.Errors.ToString() : "");
+                it.Tag = r;
+                if (r.Dry) it.ForeColor = SystemColors.GrayText;
+                else if (r.Code == JobRun.Killed) it.ForeColor = Color.DarkOrange;
+                else if (!r.Succeeded()) it.ForeColor = Color.Firebrick;
+                else if (r.Errors > 0) it.ForeColor = Color.DarkGoldenrod;
+                lvHist.Items.Add(it);
+            }
+            lvHist.EndUpdate();
+            lHistSum.Text = History.Summary(runs);
+        }
+
+        void ShowRunDetails(object s, EventArgs e)
+        {
+            if (lvHist.SelectedItems.Count == 0) return;
+            RunRecord r = (RunRecord)lvHist.SelectedItems[0].Tag;
+            MessageBox.Show(this,
+                "Started:  " + r.Start.Replace('T', ' ') + "\r\nEnded:  " + r.End.Replace('T', ' ') + "\r\nTook:  " + History.Duration(r.Seconds) +
+                "\r\nHow:  " + r.Trigger + (r.Dry ? " (dry run)" : "") + "\r\nType:  " + r.Kind + (r.Mode.Length > 0 ? " (" + r.Mode + ")" : "") +
+                "\r\nResult:  " + r.Result + "  (exit code " + r.Code + ")" + "\r\nData:  " + (r.Data.Length > 0 ? r.Data : "not reported") +
+                "\r\nFiles:  " + (r.Files.Length > 0 ? r.Files : "not reported") + "\r\nErrors:  " + r.Errors + "\r\nSymbolic links skipped:  " + r.Links +
+                "\r\nProgram version:  " + r.Version,
+                "Run details");
+        }
+
         TabPage BuildLogPage()
         {
             TabPage p = new TabPage("Log");
@@ -475,6 +568,7 @@ namespace RsyncGui
             else foreach (TabPage rp in rsyncPages) tabs.TabPages.Add(rp);
             if (kind == "daemon") tabs.TabPages.Add(pgDaemon);
             tabs.TabPages.Add(pgCmd);
+            tabs.TabPages.Add(pgHistory);
             tabs.TabPages.Add(pgLog);
             tabs.SelectedTab = (keep != null && tabs.TabPages.Contains(keep)) ? keep : pgJob;
             applyingTabs = false;
@@ -683,8 +777,24 @@ namespace RsyncGui
             Job old = cur;
             cur = null;
             store.Jobs.Remove(old);
+            pendingDeletes.Add(old.Id);
             RefreshList(null);
             if (lv.Items.Count > 0) lv.Items[0].Selected = true; else LoadJob(null);
+        }
+
+        // Once a deletion is saved, the job's log, state and history go too.
+        void CleanDeleted()
+        {
+            List<string> keep = new List<string>();
+            foreach (string id in pendingDeletes)
+            {
+                bool inUse = false;
+                foreach (Job j in store.Jobs) if (j.Id == id) inUse = true;
+                if (inUse) continue;
+                if (JobRun.IsRunning(id)) { keep.Add(id); continue; }
+                Housekeeping.RemoveJobFiles(id);
+            }
+            pendingDeletes = keep;
         }
 
         bool SaveAll()
@@ -694,6 +804,7 @@ namespace RsyncGui
                 CommitCurrent();
                 Store.Save(store);
                 savedSnapshot = store.Signature();
+                CleanDeleted();
                 UpdateStatuses();
                 return true;
             }
@@ -1080,6 +1191,7 @@ namespace RsyncGui
             ticks++;
             UpdateStatuses();
             UpdateRunPanel();
+            if (tabs.SelectedTab == pgHistory) RefreshHistory(false);
             if (cur != null)
             {
                 bool running = JobRun.IsRunning(cur.Id);

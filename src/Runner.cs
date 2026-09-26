@@ -300,6 +300,11 @@ namespace RsyncGui
         StreamWriter log;
         ProgressParser pp;
         int errors, links, warnings, errLogged, linkLogged;
+        DateTime startedAt = DateTime.MinValue;
+        string histData = "", histFiles = "";
+
+        // Where the run came from: "manual" (window), "scheduled" (background runner) or "command line".
+        public string Trigger = "manual";
         long logBytes;
         bool logCapped;
 
@@ -402,10 +407,24 @@ namespace RsyncGui
             return null;
         }
 
+        // Reads the totals rsync prints at the end (they feed the run history).
+        void CaptureRsyncSummary(string line)
+        {
+            try
+            {
+                System.Text.RegularExpressions.Match m;
+                if ((m = System.Text.RegularExpressions.Regex.Match(line, @"^Number of regular files transferred:\s*(\S+)")).Success) histFiles = m.Groups[1].Value;
+                else if ((m = System.Text.RegularExpressions.Regex.Match(line, @"^Total transferred file size:\s*(\S+)")).Success) histData = m.Groups[1].Value;
+                else if (histData.Length == 0 && (m = System.Text.RegularExpressions.Regex.Match(line, @"^sent\s+(\S+)\s+bytes")).Success) histData = m.Groups[1].Value + " sent";
+            }
+            catch { }
+        }
+
         // Filters progress noise, counts errors and keeps the log short.
         void OnLine(string line, Action<string> onLine)
         {
             if (pp != null && pp.Feed(line)) return;
+            if (job.Kind == "sync") CaptureRsyncSummary(line);
             if (job.Kind == "cloud")
             {
                 if (line.Contains("Can't follow symlink")) { Interlocked.Increment(ref links); if (Interlocked.Increment(ref linkLogged) > 3) return; }
@@ -467,6 +486,7 @@ namespace RsyncGui
             Paths.EnsureDirs();
             FileStream lk = TryLock(job.Id);
             if (lk == null) return Busy;
+            startedAt = DateTime.Now;
             try
             {
                 try { File.Delete(Paths.StopFile(job.Id)); } catch { }
@@ -588,7 +608,52 @@ namespace RsyncGui
                 if (!dry && IsSuccess(code, job.Kind)) File.WriteAllText(Paths.OkFile(job.Id), DateTime.Now.ToString("s", System.Globalization.CultureInfo.InvariantCulture));
             }
             catch { }
+            RecordHistory(code);
             return code;
+        }
+
+        static string Before(string s, string sep)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            int i = s.IndexOf(sep);
+            return i < 0 ? s : s.Substring(0, i);
+        }
+
+        void RecordHistory(int code)
+        {
+            try
+            {
+                DateTime now = DateTime.Now;
+                if (startedAt == DateTime.MinValue) startedAt = now;
+                RunRecord rec = new RunRecord();
+                rec.Start = startedAt.ToString("s", System.Globalization.CultureInfo.InvariantCulture);
+                rec.End = now.ToString("s", System.Globalization.CultureInfo.InvariantCulture);
+                rec.Seconds = (int)Math.Max(0, (now - startedAt).TotalSeconds);
+                rec.Code = code;
+                rec.Result = code == 0 ? "OK" : (IsSuccess(code, job.Kind) ? "OK (some files vanished)" : ExitText(code, job.Kind));
+                rec.Errors = errors; rec.Links = links; rec.Dry = dry;
+                rec.Trigger = Trigger; rec.Kind = job.Kind; rec.Version = AppInfo.Version;
+                rec.Mode = job.Kind == "cloud" ? job.CloudMode : (job.Kind == "daemon" ? "server" : "rsync");
+                if (job.Kind == "cloud" && pp != null)
+                {
+                    rec.Data = Before(pp.P.Bytes, " of ");
+                    rec.Files = Before(pp.P.Files, " of ");
+                    if (rec.Files.StartsWith("listed") || rec.Files.Length == 0) rec.Files = "0";
+                }
+                else if (job.Kind == "sync") { rec.Data = History.HumanBytes(histData.EndsWith(" sent") ? Before(histData, " sent") : histData); rec.Files = histFiles; }
+                if (job.Kind == "sync" && pp != null && !dry)
+                {
+                    // Jobs without --stats: use the last progress line rsync printed.
+                    if (rec.Data.Length == 0 && pp.P.Bytes.Length > 0) rec.Data = History.HumanBytes(pp.P.Bytes);
+                    if (rec.Files.Length == 0)
+                    {
+                        System.Text.RegularExpressions.Match fm = System.Text.RegularExpressions.Regex.Match(pp.P.Files ?? "", @"^(\d+) files done");
+                        rec.Files = fm.Success ? fm.Groups[1].Value : "0";
+                    }
+                }
+                History.Add(job.Id, rec);
+            }
+            catch { }
         }
 
         public static string LastResult(string id)
@@ -758,6 +823,7 @@ namespace RsyncGui
                     while (!Stop)
                     {
                         JobRun d = new JobRun(Job, false);
+                        d.Trigger = "scheduled";
                         cur = d;
                         d.RunBlocking(null);
                         cur = null;
@@ -776,6 +842,7 @@ namespace RsyncGui
                     ClearNext();
 
                     JobRun run = new JobRun(Job, false);
+                    run.Trigger = "scheduled";
                     cur = run;
                     int code = run.RunBlocking(null);
                     cur = null;

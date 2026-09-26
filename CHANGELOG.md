@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.0 (2026-09-26)
+- Run history. A **History** tab on every job lists its last 100 runs with the start time, how long it took, the amount of data, the number of files, the result, the number of errors and how it started (scheduled, manual or command line).
+- A summary line above the list: OK and failed counts, the average time of an OK run and the last success.
+- Double-click a run for its details. **Save as CSV...** exports the list. **Clear history** empties it.
+- Every run is recorded, including runs that fail before they start because of a configuration mistake.
+- Deleting a job and saving now also deletes its log, history and state files.
+
 ## 1.3.0 (2026-09-26)
 - Failure alerts. Email, Slack, Microsoft Teams, Discord or a plain JSON web hook, plus the Windows Event Log, when a scheduled job fails after its retries, works again, or has not succeeded for too long.
 - One alert per failure streak, then a reminder every 24 hours. Manual runs never alert.

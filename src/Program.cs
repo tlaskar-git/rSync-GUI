@@ -4,8 +4,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Rsync GUI")]
 [assembly: AssemblyDescription("Windows front end for rsync with auto-start")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 
 namespace RsyncGui
 {
@@ -72,7 +72,9 @@ namespace RsyncGui
             {
                 if (j.Id == args[1] || string.Equals(j.Name, args[1], StringComparison.OrdinalIgnoreCase))
                 {
-                    int code = new JobRun(j, dry).RunBlocking(null);
+                    JobRun jr = new JobRun(j, dry);
+                    jr.Trigger = "command line";
+                    int code = jr.RunBlocking(null);
                     return code < 0 ? 1 : code;
                 }
             }
