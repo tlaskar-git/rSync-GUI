@@ -314,6 +314,8 @@ namespace RsyncGui
 
         public JobRun(Job j, bool dryRun) { job = j; dry = dryRun; }
 
+        public int ErrorCount { get { return errors; } }
+
         public static FileStream TryLock(string id)
         {
             try { return new FileStream(Paths.LockFile(id), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
@@ -783,14 +785,14 @@ namespace RsyncGui
                     if (code == JobRun.Busy) { due = fin.AddSeconds(30); continue; }
                     bool ok = JobRun.IsSuccess(code, Job.Kind);
                     bool fatal = code == JobRun.Config || code == JobRun.Missing;
-                    if (ok) attempts = 0;
+                    if (ok) { attempts = 0; Alerts.JobFinished(Job, code, run.ErrorCount); }
                     else if (!fatal && attempts < Job.MaxRetries && Job.RetryMinutes > 0)
                     {
                         attempts++;
                         due = fin.AddMinutes(Job.RetryMinutes);
                         continue;
                     }
-                    else attempts = 0;
+                    else { attempts = 0; Alerts.JobFinished(Job, code, run.ErrorCount); }
 
                     if (Job.SchedMode == "start") break;
                     if (Job.SchedMode == "interval") due = fin + Sched.Interval(Job);
@@ -827,6 +829,8 @@ namespace RsyncGui
             RunnerInfo.WriteSelf();
             Dictionary<string, Worker> workers = new Dictionary<string, Worker>();
             string lastErr = "";
+            DateTime lastStale = DateTime.MinValue;
+            Alerts.LogSink = Note;
             while (true)
             {
                 try
@@ -856,6 +860,7 @@ namespace RsyncGui
                         Note("started " + kv.Value.Name);
                     }
                     lastErr = "";
+                    if ((DateTime.Now - lastStale).TotalMinutes >= 5) { lastStale = DateTime.Now; Alerts.CheckStale(d.Jobs); }
                 }
                 catch (Exception ex)
                 {

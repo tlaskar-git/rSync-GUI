@@ -17,6 +17,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 - [Schedules](#schedules)
 - [Auto-start after a reboot](#auto-start-after-a-reboot)
 - [Live progress](#live-progress)
+- [Failure alerts](#failure-alerts)
 - [Logs](#logs)
 - [Where your data lives and who can read it](#where-your-data-lives-and-who-can-read-it)
 - [Command line switches](#command-line-switches)
@@ -38,6 +39,7 @@ You set a schedule, watch live progress, and it keeps working after every reboot
 | **A real scheduler** | At Windows start, every N minutes or hours, every day at a time, or on chosen days. Missed runs are made up. Failed runs retry a set number of times. |
 | **Survives reboots** | A Windows scheduled task starts a hidden runner before anyone signs in. Interrupted jobs continue where the files stand. |
 | **Live progress** | A bar, percentage, speed, time left, file count and the files being worked on right now, for every running job. |
+| **Failure alerts** | Email, Slack, Microsoft Teams, Discord or your own web hook, plus the Windows Event Log, when a scheduled job fails, works again, or has not succeeded for too long. |
 | **Short logs** | Progress noise stays out of the log. Errors are counted and capped. No log grows past 20 MB. |
 | **The exact command** | The Command tab shows the full command line before you run it. Dry run tests without changing anything. |
 | **One folder, no installer** | Unzip and run. The zip holds the GUI, rsync, rclone and ssh. |
@@ -95,6 +97,13 @@ The GUI itself makes no network connections. Network traffic comes only from rsy
 1. **New job**, Type **Cloud**, **What to do**: Two-way (bisync).
 2. Put one path in Source and the other in Destination. Either can be a cloud path.
 3. On the **Cloud options** tab tick `--resync` for the first run only. Untick it afterwards.
+
+### Get told when a backup fails
+
+1. Click **Alerts...** on the toolbar and tick **Send alerts**.
+2. Pick where the alerts go: fill in **Email**, or paste a **web hook** URL from Slack, Microsoft Teams or Discord and pick its format. The Windows Event Log is on by default.
+3. Click **Send test alert** and check that it arrives.
+4. Click **Save**. Every scheduled job now sends alerts (each job has a **Send alerts for this job** box on its Job tab).
 
 ### Serve a folder to other machines
 
@@ -218,6 +227,41 @@ The panel at the bottom follows the selected job.
 
 It works for jobs you start in the window and jobs the background runner starts, because both write the same small progress file. Rsync reports progress for the whole run. Rclone reports the percentage of the bytes it knows about so far, so the number can move while it discovers more files.
 
+## Failure alerts
+
+Scheduled jobs run with nobody watching, so a failure can go unnoticed for days. Alerts tell you.
+
+![The Alerts window](docs/screenshots/alerts-window.png)
+
+**When an alert is sent**
+
+| Event | What you get |
+|---|---|
+| A scheduled job fails and its retries are used up | One alert with the job, the result, the source and destination, and the last lines of the log. |
+| The job keeps failing | A reminder every 24 hours. Not one alert per attempt. |
+| A job that failed works again | An "OK again" message, if you left **a job that failed works again** ticked. |
+| A job has not succeeded for too long | A warning once a day. The default is 48 hours. The limit is never shorter than 1.5 times the schedule's own gap, so a weekly job is not reported after two days. |
+
+Alerts are sent by the background runner, so they need **Auto-start at boot** to be on. Jobs you start by hand from the window do not send alerts, because you are looking at them. A job that is set up wrongly (a missing program, an unknown job type) counts as failed at once, because it is not retried.
+
+**Where alerts go**
+
+- **Email.** Server, port, user, password, from and to. Several recipients are allowed, separated by commas. Use TLS with port 587 (STARTTLS), which is what most providers offer. Port 465 with implicit SSL is not supported. Some providers need an app password instead of your normal one, and Microsoft 365 must have SMTP sign-in switched on for the account. If email is hard to set up, use a web hook.
+- **Web hook.** Paste the URL and pick the format:
+  - **Slack, or a Teams incoming webhook connector** sends `{"text": "..."}`.
+  - **Microsoft Teams (Workflows webhook)** sends an Adaptive Card. In Teams, create a workflow from the template that posts to a channel when a web request is received, and copy its URL. Menu wording changes from time to time.
+  - **Discord** sends `{"content": "..."}`. In Discord open the channel settings, Integrations, Webhooks, and copy the URL.
+  - **Plain JSON** sends `app`, `event` (`failed`, `recovered`, `stale` or `test`), `job`, `host`, `subject`, `message` and `time`, for your own tool.
+- **Windows Event Log.** Entries appear in the Application log with the source `RsyncGui`. Event 1001 is a failure (Error), 1002 is recovery (Information), 1003 is a stale job (Warning) and 1000 is a test. Other tools can collect these.
+
+**Good to know**
+
+- **Send test alert** tries every channel you filled in and tells you which worked. It ignores the master switch, so you can test before you switch alerts on.
+- The email password and the web hook URL are stored encrypted with Windows (this machine only). The URL of a web hook works like a password, so keep it private.
+- An alert contains the job name, the result, the source and destination paths, the last lines of the log and this computer's name. It goes only to the channels you set up.
+- If a channel fails to send (for example the mail server is down), the runner writes the reason to `logs\_runner.log` and carries on. A failed alert never stops a job.
+- Changing an alert setting applies straight away. It never interrupts a running job.
+
 ## Logs
 
 - The **Log** tab shows the log of the selected job, live. **Open log file** opens it in Notepad.
@@ -234,9 +278,10 @@ Everything is in one folder: **`C:\ProgramData\RsyncGui`**. The toolbar button *
 | File or folder | Holds |
 |---|---|
 | `jobs.json` | Your jobs. |
+| `alerts.json` | Where alerts go. The email password and the web hook URL are stored encrypted. |
 | `rclone.conf` | Cloud accounts and their sign-in tokens. |
 | `logs\` | One log per job, plus `_runner.log`. |
-| `state\` | Small files: last result, next run, live progress, and `_runner.version` (which version the runner is). |
+| `state\` | Small files: last result, next run, live progress, `_runner.version` (which version the runner is) and `<job>.alert` (what has already been reported for a job). |
 | `locks\` | Lock files that stop a job running twice, and Stop requests. |
 | `known_hosts` | SSH host keys. |
 | `home\` | Home folder for the bundled ssh. |
@@ -269,6 +314,7 @@ The environment variable `RSYNCGUI_DATA` moves the data folder, which is handy f
 - **Jobs.** A job is a record in `jobs.json`. The program turns it into one command line. It converts Windows paths to Cygwin paths for rsync and passes them as they are to rclone.
 - **Running.** The program starts the tool, reads its output line by line, writes the log, counts errors and updates the progress file. A lock file per job stops two runs at once. Stop writes a small file that the running job notices within a second.
 - **Cygwin settings.** The `etc\fstab` file mounts Windows drives without ACL emulation, so copied files keep normal Windows permissions. SSH key copies are made under the program's own `tmp\keys` folder, where Cygwin enforces private permissions.
+- **Alerts.** After a scheduled run has its final result, the worker asks `Alerts` whether to report it. A small file per job (`state\<job>.alert`) records what was already reported, so one failure streak gives one alert. Every few minutes the runner also checks for jobs that have not succeeded for too long. Messages go to each channel you enabled, and a channel that fails is logged and skipped.
 - **Runner.** One worker thread per scheduled job. Each worker works out the next due time from the schedule and from the time of the last success (`state\<id>.ok`), sleeps until then, runs the job and repeats. The worker writes `state\<id>.next` so the window can show the next run.
 - **Boot task.** A Windows scheduled task with a boot trigger and a 30 second delay. It ignores a second start, has no time limit and restarts on failure.
 - **Cloud setup.** rclone can list its providers and their settings as data. The window builds the setup form from that list, then drives rclone's step-by-step setup protocol for the sign-in and the follow-up questions.
@@ -304,6 +350,10 @@ Jobs made by older versions are converted when the new version opens them. For e
 
 **A log says `Unknown job type`.** The job was made by a newer version than the program that ran it. Update the program that runs the job (see the red banner above).
 
+**No alert arrives.** Check that the toolbar says **Alerts: ON**, that the job has **Send alerts for this job** ticked, that **Auto-start at boot** is on (the runner sends the alerts), and that a channel is filled in. Click **Send test alert** to see which channel fails. A scheduled job only alerts after its retries are used up, so wait for them. Then read `logs\_runner.log` for a line starting `alert email failed` or `alert web hook failed`.
+
+**The test email fails.** The message names the reason. Common ones are a wrong port, TLS switched off where the server needs it, a password that must be an app password, or a provider that blocks sign-in from programs.
+
 **A job never starts by itself.** Check that the toolbar says **Auto-start at boot: ON**, that the job has a schedule other than "Only when I click Run now", and that the status bar says the runner is running. The panel at the bottom says why a job is not scheduled.
 
 **A scheduled job cannot see a network share or drive letter.** The runner runs as SYSTEM. Use the `\\server\share` form, or turn auto-start on for a specific account.
@@ -320,7 +370,7 @@ Jobs made by older versions are converted when the new version opens them. For e
 - SSH uses key login. There is no password prompt.
 - The runner does not read a mapped drive letter when it runs as SYSTEM.
 - Files that change during a run can fail to copy or fail their checksum. There is no snapshot support (Volume Shadow Copy).
-- No email or message alerts. Look at the job list, the status panel or the log.
+- Alerts use email (STARTTLS only), web hooks and the Windows Event Log. There is no SMS, and no alert for a job you start by hand.
 - No automatic update. Follow the [upgrade steps](#upgrading).
 - Tested on Windows Server 2025. A real reboot, a Google Drive sign-in and SSH to a remote host have not been part of the automated tests, but the scheduled task, the runner, local and daemon transfers, SSH against a local test server, and OneDrive uploads have been used.
 
@@ -351,6 +401,7 @@ Source files in `src\`:
 | `Sched.cs` | Schedule rules. |
 | `Progress.cs` | Live progress parsing. |
 | `Cloud.cs` | rclone accounts, the setup dialogs and the cloud folder browser. |
+| `Alerts.cs`, `AlertsUi.cs` | When to alert, sending by email, web hook and Event Log, and the Alerts window. |
 
 ## Licences and credits
 

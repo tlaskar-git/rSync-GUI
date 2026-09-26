@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 (2026-09-26)
+- Failure alerts. Email, Slack, Microsoft Teams, Discord or a plain JSON web hook, plus the Windows Event Log, when a scheduled job fails after its retries, works again, or has not succeeded for too long.
+- One alert per failure streak, then a reminder every 24 hours. Manual runs never alert.
+- An **Alerts...** button on the toolbar with a **Send test alert** button, and a **Send alerts for this job** tick on every job.
+- The email password and the web hook URL are stored encrypted for this machine.
+- The window is taller to fit the new setting.
+
 ## 1.2.2 (2026-09-26)
 - Version check. The background runner records its version. A red banner with an **Update runner...** button appears in the window when the runner is a different version.
 - The job list records the version that saved it. A program refuses a job list saved by a newer version.

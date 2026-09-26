@@ -21,7 +21,8 @@ namespace RsyncGui
         ListView lv;
         TabControl tabs;
         ToolStrip ts;
-        ToolStripButton bNew, bDup, bDel, bSave, bRun, bDry, bStop, bAuto, bLogs;
+        ToolStripButton bNew, bDup, bDel, bSave, bRun, bDry, bStop, bAuto, bLogs, bAlerts;
+        CheckBox cAlert;
         ToolStripStatusLabel sVer, sAuto;
         ToolTip tip = new ToolTip();
 
@@ -80,6 +81,7 @@ namespace RsyncGui
             timer.Start();
             try { taskExists = BootTask.Exists(); runnerActive = JobRun.IsRunning("_runner"); } catch { }
             RefreshAutoStatus();
+            RefreshAlertsLabel();
 
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -144,6 +146,7 @@ namespace RsyncGui
             ts.Items.Add(new ToolStripSeparator());
             bAuto = TB("Auto-start at boot: ...", ToggleAutoStart);
             bLogs = TB("Open data folder", delegate { Process.Start("explorer.exe", Paths.DataDir); });
+            bAlerts = TB("Alerts: ...", delegate { AlertsUi.Show(this); RefreshAlertsLabel(); });
             tip.SetToolTip(ts, "");
 
             StatusStrip ss = new StatusStrip();
@@ -266,7 +269,7 @@ namespace RsyncGui
             p.Controls.Add(gc);
 
             GroupBox ga = new GroupBox(); ga.Text = "When to run";
-            ga.Location = new Point(12, 336); ga.Size = new Size(740, 184);
+            ga.Location = new Point(12, 336); ga.Size = new Size(740, 210);
             ga.Controls.Add(L("Run", 12, 26));
             cSched = new ComboBox(); cSched.DropDownStyle = ComboBoxStyle.DropDownList; cSched.Location = new Point(56, 24); cSched.Width = 250;
             foreach (string ml in Sched.ModeLabels) cSched.Items.Add(ml);
@@ -311,11 +314,14 @@ namespace RsyncGui
             lnkBoot.Text = "Auto-start at boot is OFF, so nothing runs by itself. Click here to turn it on.";
             lnkBoot.LinkClicked += delegate { ToggleAutoStart(null, EventArgs.Empty); };
             ga.Controls.Add(lnkBoot);
+            cAlert = new CheckBox(); cAlert.Text = "Send alerts for this job (set up where they go with Alerts... on the toolbar)"; cAlert.AutoSize = true;
+            cAlert.Location = new Point(12, 184); cAlert.Checked = true;
+            ga.Controls.Add(cAlert);
             p.Controls.Add(ga);
 
-            lExtra = L("Extra rsync arguments", 12, 536); p.Controls.Add(lExtra);
-            tExtra = T(150, 534, 602); p.Controls.Add(tExtra);
-            lExtraHint = new Label(); lExtraHint.AutoSize = true; lExtraHint.ForeColor = SystemColors.GrayText; lExtraHint.Location = new Point(150, 560);
+            lExtra = L("Extra rsync arguments", 12, 562); p.Controls.Add(lExtra);
+            tExtra = T(150, 560, 602); p.Controls.Add(tExtra);
+            lExtraHint = new Label(); lExtraHint.AutoSize = true; lExtraHint.ForeColor = SystemColors.GrayText; lExtraHint.Location = new Point(150, 586);
             p.Controls.Add(lExtraHint);
             return p;
         }
@@ -550,6 +556,7 @@ namespace RsyncGui
                 string[] dl = (j.SchedDays ?? "").Split(',');
                 for (int dd = 0; dd < 7; dd++) chDays[dd].Checked = Array.IndexOf(dl, dd.ToString()) >= 0;
                 cCatch.Checked = j.CatchUp;
+                cAlert.Checked = j.AlertOn;
                 nRetries.Value = Math.Max(0, Math.Min(20, j.MaxRetries));
                 nRetry.Value = Math.Max(0, Math.Min(10000, j.RetryMinutes));
                 UpdateSchedUi();
@@ -582,6 +589,7 @@ namespace RsyncGui
             j.AcceptNew = cAccept.Checked;
             if (pwChanged) j.Password = Secret.Protect(tPass.Text);
             FillSched(j);
+            j.AlertOn = cAlert.Checked;
             j.Extra = tExtra.Text.Trim();
             j.Includes = tInc.Text.Replace("\r\n", "\n");
             j.Excludes = tExc.Text.Replace("\r\n", "\n");
@@ -1086,6 +1094,14 @@ namespace RsyncGui
                     try { BeginInvoke((MethodInvoker)RefreshAutoStatus); } catch { }
                 });
             }
+        }
+
+        void RefreshAlertsLabel()
+        {
+            bool on = false;
+            try { on = AlertsUi.IsOn(); } catch { }
+            bAlerts.Text = "Alerts: " + (on ? "ON" : "OFF");
+            bAlerts.ForeColor = on ? Color.DarkGreen : Color.Firebrick;
         }
 
         void RefreshAutoStatus()

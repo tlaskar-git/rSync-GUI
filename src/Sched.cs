@@ -71,6 +71,34 @@ namespace RsyncGui
             return null;
         }
 
+        // How long the schedule normally leaves between runs. Null when there is no regular gap.
+        public static TimeSpan? Period(Job j)
+        {
+            switch (j.SchedMode)
+            {
+                case "interval": return Interval(j);
+                case "daily": return TimeSpan.FromDays(1);
+                case "weekly":
+                    List<int> days = new List<int>();
+                    foreach (string p in (j.SchedDays ?? "").Split(','))
+                    {
+                        int d;
+                        if (int.TryParse(p.Trim(), out d) && d >= 0 && d <= 6 && !days.Contains(d)) days.Add(d);
+                    }
+                    if (days.Count == 0) return null;
+                    if (days.Count == 1) return TimeSpan.FromDays(7);
+                    days.Sort();
+                    int widest = 0;
+                    for (int i = 0; i < days.Count; i++)
+                    {
+                        int next = i + 1 < days.Count ? days[i + 1] : days[0] + 7;
+                        widest = Math.Max(widest, next - days[i]);
+                    }
+                    return TimeSpan.FromDays(widest);
+                default: return null;
+            }
+        }
+
         public static string Describe(Job j)
         {
             switch (j.SchedMode)

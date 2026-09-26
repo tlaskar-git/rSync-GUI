@@ -92,6 +92,7 @@ namespace RsyncGui
         public string SchedDays = "0,1,2,3,4,5,6";   // 0 = Sunday
         public bool CatchUp = true;
         public int MaxRetries = 3;
+        public bool AlertOn = true;             // send failure alerts for this job (not part of Signature, so changing it never restarts a run)
         public string CloudMode = "copy";       // rclone: copy, sync, move, bisync
         public Dictionary<string, string> COpt = new Dictionary<string, string>();   // rclone flags
 
